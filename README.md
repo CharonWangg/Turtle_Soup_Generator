@@ -37,3 +37,5 @@ Related Work
 
 Readling List
 -------------
+- [Automated Story Generation as Question-Answering](https://arxiv.org/pdf/2112.03808.pdf) 
+    - Our proposed story generation system starts with sentences encapsulating the final event of the story and generates backward from a given ending.
