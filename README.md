@@ -39,3 +39,5 @@ Readling List
 -------------
 - [Automated Story Generation as Question-Answering](https://arxiv.org/pdf/2112.03808.pdf) 
     - Our proposed story generation system starts with sentences encapsulating the final event of the story and generates backward from a given ending.
+- [BoolQ: Exploring the Surprising Difficulty of Natural Yes/No Questions](https://arxiv.org/pdf/1905.10044.pdf)    
+    - We find that transferring from entailment data is more effective than transferring from paraphrase or extractive QA data, and that it, surprisingly, continues to be very beneficial even when starting from massive pre-trained language models such as BERT.
