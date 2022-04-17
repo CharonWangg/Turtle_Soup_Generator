@@ -1,8 +1,8 @@
 # CLASS_NAMES: ['Cauality', 'Inverse_Causality', 'Non_Causality']
 
 DATA:
-    DATA_PATH: /home/charon/project/nmos_inference/data_v1/causality_3510_400.npy
-    LAEBL_PATH: /home/charon/project/nmos_inference/data_v1/causality_label.npy
+    DATA_PATH: 
+    LAEBL_PATH: 
 
     TRAIN_BATCH_SIZE: 256
     VALID_BATCH_SIZE: 8192
