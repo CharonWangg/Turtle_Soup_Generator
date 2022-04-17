@@ -1,0 +1,74 @@
+# CLASS_NAMES: ['Cauality', 'Inverse_Causality', 'Non_Causality']
+
+DATA:
+    DATA_PATH: /home/charon/project/nmos_inference/data_v1/causality_3510_400.npy
+    LAEBL_PATH: /home/charon/project/nmos_inference/data_v1/causality_label.npy
+
+    TRAIN_BATCH_SIZE: 256
+    VALID_BATCH_SIZE: 8192
+
+    TRAIN_SIZE: 0.9
+
+    NUM_WORKERS: 24
+
+
+TOKENIZE:
+    TOKENIZER_NAME: sentence-transformers/all-MiniLM-L6-v2
+    MAX_SEQ_LEN: 3
+
+MODEL:
+    NAME: COMPOSITIONAL_NETWORK
+
+    ENCODER:
+        NAME: sentence-transformers/all-MiniLM-L6-v2
+        HIDDEN_SIZE: 384
+        NUM_LAYERS: 2
+
+    ARG_COMP:
+        HIDDEN_SIZE: 2048
+        OUTPUT_SIZE: 1024
+
+    EVENT_COMP:
+        HIDDEN_SIZE: 1024
+        OUTPUT_SIZE: 256
+
+    HEAD:
+        FFN:
+            NAME: MLP
+            HIDDEN_SIZE: 32
+
+OPTIMIZATION:
+
+    BATCH_SIZE_PER_GPU: 1
+    NUM_EPOCHS: 50
+
+    OPTIMIZER: Adam
+    LR: 0.0001
+    WEIGHT_DECAY: 0.05
+    EPSILON: 0.00000008
+    CORRECT_BIAS: True
+    MOMENTUM: 0.9
+
+    LR_WARMUP: True
+    WARM_FRAC: 0.2
+    ACC_GRADIENT_STEPS: 1
+
+    PATIENCE: 5
+
+CUDA:
+    FP16: False
+    FP16_OPT_LEVEL: O1
+
+LOG:
+    PATH:
+        TRAIN_LOSS_PATH: /home/charon/project/Turtle_Soup/log/train
+        VALID_LOSS_PATH: /home/charon/project/Turtle_Soup/log/valid
+        MODEL_SAVE_PATH: /home/charon/project/Turtle_Soup/models/SBERT_TUNE_1024
+    STEP:
+        LOG_STEPS: 100
+        VALID_STEPS: 5000
+        UPLOAD_STEPS: 100
+
+DEVICE: cuda:0
+
+SEED: 42
