@@ -1,5 +1,8 @@
 # Customized
 .DS_Store
+src/ASTER/
+notebooks/
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
