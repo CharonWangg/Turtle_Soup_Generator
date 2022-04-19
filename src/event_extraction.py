@@ -97,6 +97,7 @@ class EventMaker:
             index = defaultdict(list)  #for identifying part-of-speech
             index["EmptyParameter"] = -1
             # create events
+            parsed_deps = []
             for dep in deps:
                 #subject
                 d = {}
@@ -106,8 +107,12 @@ class EventMaker:
                 d['governor'] = gov_.id
                 d['dependentGloss'] = dep_.text
                 d['dependent'] = dep_.id
-                # print(d)
-                # Note: dependentGloss: index 2; governorGloss: index 0 
+                parsed_deps.append(d)
+
+            deps = parsed_deps
+            for d in deps:
+                if len(tokens[d["dependentGloss"]]) == 0:
+                    continue
                 if 'nsubj' in d["dep"] and "RB" not in tokens[d["dependentGloss"]][1]: #adjective? #"csubj" identifies a lot of things wrong 
                     #print(tokens[d["dependentGloss"]][1])
                     if d["governorGloss"] not in verbs:
@@ -304,7 +309,14 @@ class EventMaker:
 
                 #self.events.append([a1,b1,c1,label,d1])
                 self.generalized_events.append([a1,b1,c1,d1])
-                self.original_events.append([a,b,c,d])
+                
+                lemmatized = []
+                for w in [a, b, c, d]:
+                    if len(tokens[w]) > 0:
+                        lemmatized.append(tokens[w][0])
+                    else:
+                        lemmatized.append(w)
+                self.original_events.append(lemmatized)
 
     def generalize_noun(self, word, tokens, named_entities, original_sent):
         # This function is to support getEvent functions. Tokens have specific format(lemma, pos, ner)
@@ -380,18 +392,28 @@ class EventMaker:
         else:
             return word.lower()	
 
+import time
+from tqdm import tqdm
 ################ Use Sample ################
 if __name__ == '__main__':
-    sentences = [
-        # 'Joey left home for his trip to San Diego.', 
-        # 'John and Mary went to the store',
-        # 'John went to school and his mother was happier',
-        "John doesn't like school.",
-        "I would not let you leave me.",
-        "I would no longer go to the school"
-        ]
-    event_makers = [EventMaker(sent) for sent in sentences]
-    for em in event_makers:
+    ########### Parse all evaluation ###########
+    # file = open('./data/evaluation.txt', 'r')
+    # sentences = []
+    # for line in file.readlines():
+    #     sentences.append(line.strip().replace('\n', ''))
+
+    # print('Count of sentences:', len(sentences))
+    # start = time.time()
+    # event_makers = [EventMaker(sent) for sent in sentences]
+    # for em in tqdm(event_makers):
+    #     em.getEvent()
+    # end = time.time()
+    # print('Total time:', end - start)
+
+    ########### Example usage ###########
+    sentences = ['They try transferring shield power to the engines without effect.']
+    for sent in tqdm(sentences):
+        em = EventMaker(sent)
         em.getEvent()
         print('[Original sentence]:', em.sentence)
         print('[Original events]:', em.original_events)
