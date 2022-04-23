@@ -13,8 +13,7 @@ def check_path(path):
 
 def configure_openai():
     print('>Please input your OpenAI API key:')
-    # openai.api_key = input()
-    openai.api_key = "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"
+    openai.api_key = input()
 
 
 # get the sentiment of the given sentence

@@ -28,8 +28,8 @@ class TurtleSoupBoiler:
         if self.verbose:
             print('>Please input the first sentence of your story:')
         
-        # sentence = input()
-        sentence = 'Jack went home with a new cat.'
+        sentence = input()
+        # sentence = 'Jack went home with a new cat.'
         story = self.generate_story(sentence)
         self.story.append(story)
         if self.verbose:
