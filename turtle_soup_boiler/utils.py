@@ -46,7 +46,7 @@ def get_reversal(sentiment):
 
 
 # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-def reversal_sample(curr_last_sent, curr_seq, p_sample=0.6, verbose=False):
+def reversal_sample(curr_last_sent, curr_seq, p_sample=0.6, verbose=False, used_continuation=[]):
     if random.random() < p_sample:
         sentiment = get_sentiment(curr_last_sent)
         if verbose:
@@ -59,11 +59,16 @@ def reversal_sample(curr_last_sent, curr_seq, p_sample=0.6, verbose=False):
             print(f">Input Sequence: {input_seq}")
     else:
         # follow the original sequence
-        input_seq = f"{curr_seq} Then,"
+        continuation = get_continuation()
+        input_seq = f"{curr_seq} {continuation}"
         if verbose:
             print(f">Input Sequence: {input_seq}")
-
     return input_seq
+
+def get_continuation(used_list=[]):
+    continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,", "As a result,", "Thus,"]
+    final_choices = [cont for cont in continuation_list if cont not in used_list]
+    return random.choice(final_choices)
 
 
 # # generate story from the given sequence

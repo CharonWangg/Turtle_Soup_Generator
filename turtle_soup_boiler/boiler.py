@@ -67,7 +67,8 @@ class TurtleSoupBoiler:
                 # sample the reversal probability, if it is less than p_sample, then reverse the sentence
                 input_seq = reversal_sample(curr_last_sent, curr_seq, self.p_sample, verbose)
             else:
-                input_seq = f"{curr_seq} Then,"
+                continuation = get_continuation()
+                input_seq = f"{curr_seq} {continuation}"
                 if self.verbose:
                     print(f">Input Sequence: {input_seq}")
             
