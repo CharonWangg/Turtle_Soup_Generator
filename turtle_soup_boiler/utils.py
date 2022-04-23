@@ -13,7 +13,8 @@ def check_path(path):
 
 def configure_openai():
     print('>Please input your OpenAI API key:')
-    openai.api_key = input()
+    # openai.api_key = input()
+    openai.api_key = "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"
 
 
 # get the sentiment of the given sentence
@@ -66,35 +67,36 @@ def reversal_sample(curr_last_sent, curr_seq, p_sample=0.6, verbose=False):
     return input_seq
 
 
-# generate story from the given sequence
-def generate_story(input, num_sent=5, p_sample=0.6, sample_step=2, verbose=False):
-    curr_seq = input
-    curr_last_sent = input
-    for i in range(1, num_sent + 1):
-        # check if it is the sample step
-        if i % sample_step == 0:
-            # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-            input_seq = reversal_sample(curr_last_sent, curr_seq, p_sample, verbose)
-        else:
-            input_seq = f"{curr_seq} Then,"
-            if verbose:
-                print(f">Input Sequence: {input_seq}")
-        # get the next sentence
-        response = openai.Completion.create(
-            model="text-davinci-002",
-            prompt=input_seq,
-            temperature=0.7,
-            max_tokens=256,
-            top_p=0.7,
-            frequency_penalty=0,
-            presence_penalty=0
-        )
-        res = response["choices"][0]["text"].strip("\n")
-        curr_last_sent = res
-        if verbose:
-            print(f">Current Last Sentence: {curr_last_sent}")
-        curr_seq += f" {res}"
-        if verbose:
-            print(f">Current Sequence: {curr_seq}")
+# # generate story from the given sequence
+# def generate_story(input, num_sent=5, p_sample=0.6, sample_step=2, verbose=False):
+#     curr_seq = input
+#     curr_last_sent = input
+#     for i in range(1, num_sent + 1):
+#         # check if it is the sample step
+#         if i % sample_step == 0:
+#             # sample the reversal probability, if it is less than p_sample, then reverse the sentence
+#             input_seq = reversal_sample(curr_last_sent, curr_seq, p_sample, verbose)
+#         else:
+#             input_seq = f"{curr_seq} Then,"
+#             if verbose:
+#                 print(f">Input Sequence: {input_seq}")
+#         # get the next sentence
+#         response = openai.Completion.create(
+#             model="text-davinci-002",
+#             prompt=input_seq,
+#             temperature=0.7,
+#             max_tokens=256,
+#             top_p=0.7,
+#             frequency_penalty=0,
+#             presence_penalty=0.2,
+#             # stop=[".", "?", "!"]
+#         )
+#         res = response["choices"][0]["text"].strip("\n")
+#         curr_last_sent = res
+#         if verbose:
+#             print(f">Current Last Sentence: {curr_last_sent}")
+#         curr_seq += f" {res}"
+#         if verbose:
+#             print(f">Current Sequence: {curr_seq}")
 
-    return curr_seq
+#     return curr_seq
