@@ -7,7 +7,7 @@ import re
 
 class TurtleSoupBoiler:
     # class variables
-    single_sent_prompt = 'Generate one sentence completion for the following sentence: \n'
+    single_sent_prompt = 'Generate one sentence completion for the following story: \n'
 
 
     def __init__(self, num_sent=5, p_sample=0.6, sample_step=2, filename=None, verbose=False):
