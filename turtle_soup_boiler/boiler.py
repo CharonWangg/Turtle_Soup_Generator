@@ -1,7 +1,7 @@
-from .utils import *
-from .quantifier import Quantifier
-# from utils import *
-# from quantifier import Quantifier
+# from .utils import *
+# from .quantifier import Quantifier
+from utils import *
+from quantifier import Quantifier
 import pickle
 import string
 import re
@@ -117,6 +117,13 @@ class TurtleSoupBoiler:
             print('>[ERROR] Empty input sequence! Stop!')
             return ''
 
+
+        # TODO: generate the settings of the story
+
+        location, main_char, possible_chars = self.generate_settings(first_sent)
+        first_sent = f"Setting:\nLocation: {location}\nMain Character: {main_char}\nOther Characters: {possible_chars}\n{first_sent}"
+        if self.verbose:
+            print(first_sent)
         first_sent = self.clean_sent(first_sent) #.rstrip()
         curr_story = first_sent
         prev_sent = first_sent
@@ -162,7 +169,10 @@ class TurtleSoupBoiler:
             print('>Need to re-generate to replace overly similar sentence!')
         re_generation_counter = 0
         max_sim_scores = 1
-        while max_sim_scores > 0.9 and re_generation_counter < 10:
+        while max_sim_scores > 0.9 and re_generation_counter < 5:
+            # TODO: Regenerate with the new prompt "because" / 
+            # "then, an unexpected character shows up in the current location" / "Then, they moved to [new location], which is"
+            # "then, an unknown piece of memory emerged. Three years ago," / "but it is too late,"
             gpt_input = self.get_continuation_prompt(curr_story)
             new_sent = self.gpt_get_next(gpt_input)
             max_sim_scores, new_embedding = self.max_similarity(new_sent)
@@ -225,4 +235,27 @@ class TurtleSoupBoiler:
         if sent[-1] not in [".", ",", "?", "!", "'", '"']:
             sent += '.'
         return sent.capitalize()
+
+    def call_GPT(self, prompt):
+        response = openai.Completion.create(
+            model="text-davinci-002",
+            prompt=prompt,
+            temperature=0.7,
+            max_tokens=256,
+            top_p=0.7,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop = ['. ', '? ', '! ']
+        )
+        return response["choices"][0]["text"].strip("\n")
+    
+    def generate_settings(self, sent):
+        '''
+            Construct setting of the story, given the first sentence.
+        '''
+        location = self.call_GPT(f"Where does the following story probably happen? {sent} The story probably happens at")
+        main_char = self.call_GPT(f"Who is the main character of the following story? {sent} The main character is")
+        possible_chars = self.call_GPT(f"What other characters might be present at the story? {sent} Some other characters might include")
+        # add period, if needed
+        return location, main_char, possible_chars
 
