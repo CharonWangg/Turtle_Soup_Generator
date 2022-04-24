@@ -12,15 +12,18 @@ sentiment_list = ["happy", "angry", "relieving", "worrying",
 
 class TurtleSoupBoiler:
     # class variables
-    single_sent_prompt = 'Generate one sentence completion for the following story: '
+    single_sent_prompt = 'Generate one sentence completion after given story:   '
     sentiment_list = ["happy", "angry", "relieving", "worrying",
                       "surprising", "anticipated", "reassuring",
                       "stressing", "calm", "sad"]
 
-    def __init__(self, num_sent=5, p_sample=0.6, sample_step=1, filename=None,
+    def __init__(self, key=None, num_sent=5, p_sample=0.6, sample_step=1, filename=None,
                  quantifier_name="cardiffnlp/twitter-roberta-base-sentiment",
                  verbose=False):
-        configure_openai()
+        if key is None:
+            configure_openai()
+        else:
+            openai.api_key = key
         self.__dict__.update(locals())
         self.story = []
         self.quantifier = Quantifier(quantifier_name)
@@ -60,10 +63,15 @@ class TurtleSoupBoiler:
     def get_aug_reversal(self, sent, sentiment):
         strength = self.quantifier.get_sentiment_quantity(sent)  # {sentiment: strength}
         sentiment = self.get_reversal(sentiment)
-        sentiment = f"{strength} {sentiment}".lstrip()
+        if sentiment == "surprising":
+            sentiment = sentiment.lstrip()
+        else:
+            sentiment = f"{strength} {sentiment}".lstrip()
+
         if self.verbose:
             print(sent)
             print(sentiment)
+
         return sentiment
 
     # sample the reversal probability, if it is less than p_sample, then reverse the sentence
@@ -81,7 +89,7 @@ class TurtleSoupBoiler:
         else:
             # follow the original sequence
             continuation = get_continuation()
-            input_seq = f"{curr_seq} {continuation},"
+            input_seq = f"{curr_seq} {continuation}"
 
             if self.verbose:
                 print(f">Input Sequence: {input_seq}")
@@ -117,7 +125,6 @@ class TurtleSoupBoiler:
                 print(f">Input Sequence: {input_seq}")
 
             # get the next sentence
-            print(self.single_sent_prompt + input_seq)
             response = openai.Completion.create(
                 model="text-davinci-002",
                 prompt=self.single_sent_prompt + input_seq,
