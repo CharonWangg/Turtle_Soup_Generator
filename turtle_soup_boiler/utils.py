@@ -69,8 +69,8 @@ def get_sentiment(sequence):
 #     return curr_seq
 
 
-def get_continuation(used_list=[]):
-    continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,",
-                         "As a result,", "Thus,"]
-    final_choices = [cont for cont in continuation_list if cont not in used_list]
-    return "" #"Then," #random.choice(final_choices)
+# def get_continuation(used_list=[]):
+#     continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,",
+#                          "As a result,", "Thus,"]
+#     final_choices = [cont for cont in continuation_list if cont not in used_list]
+#     return "" #"Then," #random.choice(final_choices)

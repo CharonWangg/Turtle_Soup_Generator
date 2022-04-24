@@ -1,9 +1,12 @@
 from .utils import *
 from .quantifier import Quantifier
+# from utils import *
+# from quantifier import Quantifier
 import pickle
 import string
 import re
 from sentence_transformers import SentenceTransformer, util
+import numpy as np
 
 sentiment_list = ["happy", "angry", "relieving", "worrying",
                   "surprising", "anticipated", "reassuring",
@@ -12,10 +15,13 @@ sentiment_list = ["happy", "angry", "relieving", "worrying",
 
 class TurtleSoupBoiler:
     # class variables
-    single_sent_prompt = 'Generate one sentence completion after given story:   '
+    # single_sent_prompt = 'Generate one sentence completion after given story:   '
+    single_sent_prompt = ""
     sentiment_list = ["happy", "angry", "relieving", "worrying",
                       "surprising", "anticipated", "reassuring",
                       "stressing", "calm", "sad"]
+    continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,",
+                         "As a result,", "Thus,"]
 
     def __init__(self, key=None, num_sent=5, p_sample=0.6, sample_step=1, filename=None,
                  quantifier_name="cardiffnlp/twitter-roberta-base-sentiment",
@@ -25,11 +31,13 @@ class TurtleSoupBoiler:
         else:
             openai.api_key = key
         self.__dict__.update(locals())
+        print(self.__dict__)
         self.story = []
         self.quantifier = Quantifier(quantifier_name)
         if filename is None:
             self.filename = 'story.pkl'
         self.sent_similarity_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        self.used_continuation = []
 
     # Generate a story by input a sentence and store it in self.story
     def generate_by_input(self):
@@ -75,26 +83,31 @@ class TurtleSoupBoiler:
         return sentiment
 
     # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-    def reversal_sample(self, curr_last_sent, curr_seq, used_continuation=[]):
-        if random.random() < self.p_sample:
-            sentiment = get_sentiment(curr_last_sent)
-            if self.verbose:
-                print(f">Sentiment: {sentiment}")
-            next_sentiment = self.get_aug_reversal(curr_last_sent, sentiment)
-            if self.verbose:
-                print(f">Next Sentiment: {next_sentiment}")
-            input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
-            if self.verbose:
-                print(f">Input Sequence: {input_seq}")
-        else:
-            # follow the original sequence
-            continuation = get_continuation()
-            input_seq = f"{curr_seq} {continuation}"
-
-            if self.verbose:
-                print(f">Input Sequence: {input_seq}")
+    def get_reversal_prompt(self, curr_last_sent, curr_seq, used_continuation=[]):
+        sentiment = get_sentiment(curr_last_sent)
+        if self.verbose:
+            print(f">Sentiment: {sentiment}")
+        next_sentiment = self.get_aug_reversal(curr_last_sent, sentiment)
+        if self.verbose:
+            print(f">Next Sentiment: {next_sentiment}")
+        input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
+        if self.verbose:
+            print(f">Input Sequence: {input_seq}")
 
         return input_seq
+
+    def get_continuation_prompt(self, curr_seq, continuation_prompt = None):
+
+        if continuation_prompt is None:
+            # if all the continuations have been used, reset
+            if len(self.used_continuation) == len(self.continuation_list):
+                self.used_continuation = []
+            continuation_prompt = np.random.choice(self.continuation_list)
+            while continuation_prompt in self.used_continuation:
+                continuation_prompt = np.random.choice(self.continuation_list)
+
+        continuation_prompt = continuation_prompt + " something happened. "
+        return f"{curr_seq} {continuation_prompt}"
 
     def generate_story(self, first_sent):
         '''
@@ -105,52 +118,79 @@ class TurtleSoupBoiler:
             return ''
 
         first_sent = first_sent.rstrip()
-        curr_seq = first_sent
-        curr_last_sent = first_sent
+        curr_story = first_sent
+        prev_sent = first_sent
         self.sent_lst = [first_sent]
         self.sent_emb = [self.sent_similarity_model.encode(first_sent, convert_to_tensor=True)]
-        
+        # print(self.num_sent)
         for i in range(1, self.num_sent + 1):
             if self.verbose:
                 print('> Current step:', i + 1)
 
             # check if it is the sample step; if so, re-engineer the prompt
-            if i % self.sample_step == 0:
-                # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-                input_seq = self.reversal_sample(curr_last_sent, curr_seq, self.p_sample, self.verbose)
+            # also, sample the reversal probability, if it is less than p_sample, then reverse the sentence
+            if i % self.sample_step == 0 and random.random() < self.p_sample:
+                gpt_input = self.get_reversal_prompt(prev_sent, curr_story)
             else:
-                continuation = get_continuation()
-                input_seq = f"{curr_seq} {continuation}"
+                gpt_input = curr_story # self.get_continuation_prompt(curr_story)
             if self.verbose:
-                print(f">Input Sequence: {input_seq}")
+                print(f">Input to GPT: {gpt_input}")
+            new_sent = self.gpt_get_next(gpt_input)
+            max_sim_scores, new_embedding = self.max_similarity(new_sent)
 
-            # get the next sentence
-            response = openai.Completion.create(
-                model="text-davinci-002",
-                prompt=self.single_sent_prompt + input_seq,
-                temperature=0.7,
-                max_tokens=256,
-                top_p=0.7,
-                frequency_penalty=0,
-                presence_penalty=0
-            )
-            res = response["choices"][0]["text"].strip("\n")
-            res = self.clean_sent(res)
-
-            max_sim_scores, new_embedding = self.max_similarity(res)
-            print('[res]', res)
-            print('[max_sim_scores]', max_sim_scores)
-            self.sent_lst.append(res)
+            ## handle exceptions: if the generated sentence is too similar to some previous sentence
+            re_generation_counter = 0
+            while max_sim_scores > 0.9 and re_generation_counter < 10:
+                print('[new_sent]', new_sent)
+                print('[max_sim_scores]', max_sim_scores)
+                gpt_input = self.get_continuation_prompt(curr_story)
+                new_sent = self.gpt_get_next(gpt_input)
+                max_sim_scores, new_embedding = self.max_similarity(new_sent)
+                re_generation_counter += 1
+            if max_sim_scores > 0.9: # if 10 prompt still cannot bring the similarity down
+                print('>All the continuous prompt is not able to bring the sim score down!')
+                gpt_input_lst = [self.get_continuation_prompt(curr_story, cp) for cp in self.continuation_list]
+                new_sent_lst = [self.gpt_get_next(gpt_input) for gpt_input in gpt_input_lst]
+                sim_score_lst = [self.max_similarity(new_sent) for new_sent in new_sent_lst]
+                best_i = np.argmin([i[0] for i in sim_score_lst])
+                new_sent = new_sent_lst[best_i]
+                new_embedding = sim_score_lst[best_i][1]
+                max_sim_scores = sim_score_lst[best_i][0]
+                self.used_continuation = []
+            
+            # update current sentences
+            if self.verbose:
+                print('[Final new_sent]', new_sent)
+                print('[Final max_sim_scores]', max_sim_scores)
+            self.sent_lst.append(new_sent)
             self.sent_emb.append(new_embedding)
-
-            curr_last_sent = res
+            prev_sent = new_sent
             if self.verbose:
-                print(f">Current Last Sentence: {curr_last_sent}")
-            curr_seq += f" {res}"
-            if self.verbose:
-                print(f">Current Sequence: {curr_seq}")
+                print(f">Current Last Sentence: {prev_sent}")
+            curr_story += f" {new_sent}"
+            print()
+        print('>Final story:', curr_story)
+        return curr_story
 
-        return curr_seq
+    def gpt_get_next(self, gpt_input):
+        '''
+            Get the next sentence from GPT.
+            Specifically designed for next-sentence generation for stories
+        '''
+        # get the next sentence
+        response = openai.Completion.create(
+            model="text-davinci-002",
+            prompt=self.single_sent_prompt + gpt_input + '\n',
+            temperature=0.7,
+            max_tokens=256,
+            top_p=0.7,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop = ['. ']
+        )
+        new_sent = response["choices"][0]["text"].strip("\n")
+        new_sent = self.clean_sent(new_sent)
+        return new_sent
 
     def max_similarity(self, new_sent):
         '''
