@@ -3,6 +3,7 @@ from .quantifier import Quantifier
 import pickle
 import string
 import re
+from sentence_transformers import SentenceTransformer, util
 
 sentiment_list = ["happy", "angry", "relieving", "worrying",
                   "surprising", "anticipated", "reassuring",
@@ -25,6 +26,7 @@ class TurtleSoupBoiler:
         self.quantifier = Quantifier(quantifier_name)
         if filename is None:
             self.filename = 'story.pkl'
+        self.sent_similarity_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
     # Generate a story by input a sentence and store it in self.story
     def generate_by_input(self):
@@ -65,24 +67,23 @@ class TurtleSoupBoiler:
         return sentiment
 
     # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-    def reversal_sample(self, curr_last_sent, curr_seq, p_sample=0.6,
-                        used_continuation=[], verbose=False):
-        if random.random() < p_sample:
+    def reversal_sample(self, curr_last_sent, curr_seq, used_continuation=[]):
+        if random.random() < self.p_sample:
             sentiment = get_sentiment(curr_last_sent)
-            if verbose:
+            if self.verbose:
                 print(f">Sentiment: {sentiment}")
             next_sentiment = self.get_aug_reversal(curr_last_sent, sentiment)
-            if verbose:
+            if self.verbose:
                 print(f">Next Sentiment: {next_sentiment}")
             input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
-            if verbose:
+            if self.verbose:
                 print(f">Input Sequence: {input_seq}")
         else:
             # follow the original sequence
             continuation = get_continuation()
             input_seq = f"{curr_seq} {continuation},"
 
-            if verbose:
+            if self.verbose:
                 print(f">Input Sequence: {input_seq}")
 
         return input_seq
@@ -98,6 +99,9 @@ class TurtleSoupBoiler:
         first_sent = first_sent.rstrip()
         curr_seq = first_sent
         curr_last_sent = first_sent
+        self.sent_lst = [first_sent]
+        self.sent_emb = [self.sent_similarity_model.encode(first_sent, convert_to_tensor=True)]
+        
         for i in range(1, self.num_sent + 1):
             if self.verbose:
                 print('> Current step:', i + 1)
@@ -125,6 +129,13 @@ class TurtleSoupBoiler:
             )
             res = response["choices"][0]["text"].strip("\n")
             res = self.clean_sent(res)
+
+            max_sim_scores, new_embedding = self.max_similarity(res)
+            print('[res]', res)
+            print('[max_sim_scores]', max_sim_scores)
+            self.sent_lst.append(res)
+            self.sent_emb.append(new_embedding)
+
             curr_last_sent = res
             if self.verbose:
                 print(f">Current Last Sentence: {curr_last_sent}")
@@ -134,9 +145,14 @@ class TurtleSoupBoiler:
 
         return curr_seq
 
-    def gpt_helper(self, prompt):
-        pass
-
+    def max_similarity(self, new_sent):
+        '''
+            Find the max similarity with current sentences embeddings; also return the embedded new sentence
+        '''
+        new_embedding = self.sent_similarity_model.encode(new_sent, convert_to_tensor=True)
+        sim_scores = [float(util.pytorch_cos_sim(new_embedding, sent_emb)) for sent_emb in self.sent_emb]
+        return max(sim_scores), new_embedding
+        
     def clean_sent(self, sent):
         '''
             Clean a given sentence
