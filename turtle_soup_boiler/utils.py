@@ -35,43 +35,7 @@ def get_sentiment(sequence):
     return res
 
 
-# get the reversal of the given sentiment
-def get_reversal(sentiment):
-    sentiment_list = ["happy", "angry", "relieving", "worrying", "surprising", "anticipated", "reassuring", "stressing",
-                      "calm", "sad"]
-    if sentiment in sentiment_list:
-        return sentiment_list[-(sentiment_list.index(sentiment) + 1)]
-    else:
-        return "surprising"
-
-
-# sample the reversal probability, if it is less than p_sample, then reverse the sentence
-def reversal_sample(curr_last_sent, curr_seq, p_sample=0.6, verbose=False, used_continuation=[]):
-    if random.random() < p_sample:
-        sentiment = get_sentiment(curr_last_sent)
-        if verbose:
-            print(f">Sentiment: {sentiment}")
-        next_sentiment = get_reversal(sentiment)
-        if verbose:
-            print(f">Next Sentiment: {next_sentiment}")
-        input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
-        if verbose:
-            print(f">Input Sequence: {input_seq}")
-    else:
-        # follow the original sequence
-        continuation = get_continuation()
-        input_seq = f"{curr_seq} {continuation}"
-        if verbose:
-            print(f">Input Sequence: {input_seq}")
-    return input_seq
-
-def get_continuation(used_list=[]):
-    continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,", "As a result,", "Thus,"]
-    final_choices = [cont for cont in continuation_list if cont not in used_list]
-    return random.choice(final_choices)
-
-
-# # generate story from the given sequence
+# generate story from the given sequence
 # def generate_story(input, num_sent=5, p_sample=0.6, sample_step=2, verbose=False):
 #     curr_seq = input
 #     curr_last_sent = input
@@ -92,8 +56,7 @@ def get_continuation(used_list=[]):
 #             max_tokens=256,
 #             top_p=0.7,
 #             frequency_penalty=0,
-#             presence_penalty=0.2,
-#             # stop=[".", "?", "!"]
+#             presence_penalty=0
 #         )
 #         res = response["choices"][0]["text"].strip("\n")
 #         curr_last_sent = res
@@ -102,5 +65,12 @@ def get_continuation(used_list=[]):
 #         curr_seq += f" {res}"
 #         if verbose:
 #             print(f">Current Sequence: {curr_seq}")
-
+#
 #     return curr_seq
+
+
+def get_continuation(used_list=[]):
+    continuation_list = ["Then,", "After a while,", "Meanwhile,", "And then,", "Some time later,", "After that,",
+                         "As a result,", "Thus,"]
+    final_choices = [cont for cont in continuation_list if cont not in used_list]
+    return "" #"Then," #random.choice(final_choices)

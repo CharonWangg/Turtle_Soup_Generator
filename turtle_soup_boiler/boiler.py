@@ -1,52 +1,91 @@
-from random import sample
-from utils import *
+from .utils import *
+from .quantifier import Quantifier
 import pickle
 import string
-import re 
+import re
+
+sentiment_list = ["happy", "angry", "relieving", "worrying",
+                  "surprising", "anticipated", "reassuring",
+                  "stressing", "calm", "sad"]
 
 
 class TurtleSoupBoiler:
     # class variables
-    single_sent_prompt = 'Generate one sentence completion for the following story: \n'
+    single_sent_prompt = 'Generate one sentence completion for the following story: '
+    sentiment_list = ["happy", "angry", "relieving", "worrying",
+                      "surprising", "anticipated", "reassuring",
+                      "stressing", "calm", "sad"]
 
-
-    def __init__(self, num_sent=5, p_sample=0.6, sample_step=2, filename=None, verbose=False):
+    def __init__(self, num_sent=5, p_sample=0.6, sample_step=1, filename=None,
+                 quantifier_name="cardiffnlp/twitter-roberta-base-sentiment",
+                 verbose=False):
         configure_openai()
         self.__dict__.update(locals())
         self.story = []
+        self.quantifier = Quantifier(quantifier_name)
         if filename is None:
             self.filename = 'story.pkl'
-        else:
-            self.filename = filename
-        self.num_sent = num_sent
-        self.p_sample = p_sample
-        self.sample_step = sample_step
-        self.verbose = verbose
 
     # Generate a story by input a sentence and store it in self.story
     def generate_by_input(self):
-        if self.verbose:
-            print('>Please input the first sentence of your story:')
-        
+        print('>Please input the first sentence of your story:')
         sentence = input()
-        # sentence = 'Jack went home with a new cat.'
         story = self.generate_story(sentence)
         self.story.append(story)
-        if self.verbose:
-            print('>Generate story successfully!')
-            print(self.story)
+        print('>Generate story successfully!')
 
-    # # Generate a story by string and store it in self.story
-    # def generate_by_text(self, text, verbose=False):
-    #     story = generate_story(text, self.num_sent, self.p_sample, self.sample_step, verbose)
-    #     self.story.append(story)
-    #     print('>Generate story successfully!')
+    # Generate a story by string and store it in self.story
+    def generate_by_text(self, text):
+        story = self.generate_story(text)
+        self.story.append(story)
+        print('>Generate story successfully!')
 
     # Save the story to a csv file
     def save_story(self):
         with open(self.filename, 'wb') as f:
             pickle.dump(self.story, f)
             print('>Save story successfully!')
+
+    # get the reversal of the given sentiment
+    def get_reversal(self, sentiment):
+        if sentiment in self.sentiment_list:
+            sentiment = self.sentiment_list[-(sentiment_list.index(sentiment) + 1)]
+        else:
+            sentiment = "surprising"
+        return sentiment
+
+    # build the strong reversal sentence
+    def get_aug_reversal(self, sent, sentiment):
+        strength = self.quantifier.get_sentiment_quantity(sent)  # {sentiment: strength}
+        sentiment = self.get_reversal(sentiment)
+        sentiment = f"{strength} {sentiment}".lstrip()
+        if self.verbose:
+            print(sent)
+            print(sentiment)
+        return sentiment
+
+    # sample the reversal probability, if it is less than p_sample, then reverse the sentence
+    def reversal_sample(self, curr_last_sent, curr_seq, p_sample=0.6,
+                        used_continuation=[], verbose=False):
+        if random.random() < p_sample:
+            sentiment = get_sentiment(curr_last_sent)
+            if verbose:
+                print(f">Sentiment: {sentiment}")
+            next_sentiment = self.get_aug_reversal(curr_last_sent, sentiment)
+            if verbose:
+                print(f">Next Sentiment: {next_sentiment}")
+            input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
+            if verbose:
+                print(f">Input Sequence: {input_seq}")
+        else:
+            # follow the original sequence
+            continuation = get_continuation()
+            input_seq = f"{curr_seq} {continuation},"
+
+            if verbose:
+                print(f">Input Sequence: {input_seq}")
+
+        return input_seq
 
     def generate_story(self, first_sent):
         '''
@@ -56,23 +95,25 @@ class TurtleSoupBoiler:
             print('>[ERROR] Empty input sequence! Stop!')
             return ''
 
+        first_sent = first_sent.rstrip()
         curr_seq = first_sent
         curr_last_sent = first_sent
         for i in range(1, self.num_sent + 1):
             if self.verbose:
                 print('> Current step:', i + 1)
-            
+
             # check if it is the sample step; if so, re-engineer the prompt
             if i % self.sample_step == 0:
                 # sample the reversal probability, if it is less than p_sample, then reverse the sentence
-                input_seq = reversal_sample(curr_last_sent, curr_seq, self.p_sample, verbose)
+                input_seq = self.reversal_sample(curr_last_sent, curr_seq, self.p_sample, self.verbose)
             else:
                 continuation = get_continuation()
                 input_seq = f"{curr_seq} {continuation}"
-                if self.verbose:
-                    print(f">Input Sequence: {input_seq}")
-            
+            if self.verbose:
+                print(f">Input Sequence: {input_seq}")
+
             # get the next sentence
+            print(self.single_sent_prompt + input_seq)
             response = openai.Completion.create(
                 model="text-davinci-002",
                 prompt=self.single_sent_prompt + input_seq,
@@ -80,7 +121,7 @@ class TurtleSoupBoiler:
                 max_tokens=256,
                 top_p=0.7,
                 frequency_penalty=0,
-                presence_penalty=0.2
+                presence_penalty=0
             )
             res = response["choices"][0]["text"].strip("\n")
             res = self.clean_sent(res)
@@ -92,7 +133,6 @@ class TurtleSoupBoiler:
                 print(f">Current Sequence: {curr_seq}")
 
         return curr_seq
-
 
     def gpt_helper(self, prompt):
         pass
@@ -106,4 +146,5 @@ class TurtleSoupBoiler:
         sent = re.sub(' +', ' ', sent)
         sent = re.sub('\n+', '\n', sent)
         sent = re.sub('\t+', ' ', sent)
-        return sent
+        return sent.capitalize()
+
