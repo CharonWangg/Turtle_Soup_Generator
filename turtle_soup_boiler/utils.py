@@ -1,6 +1,6 @@
 import os
 import random
-
+import json
 import openai
 
 
@@ -11,9 +11,12 @@ def check_path(path):
         return False
 
 
-def configure_openai():
-    print('>Please input your OpenAI API key:')
-    openai.api_key = input()
+def configure_openai():    
+    try: # try to load from local json file
+        openai.api_key = json.load(open('./config/boiler.json'))["api_key"]
+    except:
+        print('>Please input your OpenAI API key:')
+        openai.api_key = input()
 
 
 # get the sentiment of the given sentence

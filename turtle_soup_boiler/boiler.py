@@ -117,7 +117,7 @@ class TurtleSoupBoiler:
             print('>[ERROR] Empty input sequence! Stop!')
             return ''
 
-        first_sent = first_sent.rstrip()
+        first_sent = self.clean_sent(first_sent) #.rstrip()
         curr_story = first_sent
         prev_sent = first_sent
         self.sent_lst = [first_sent]
@@ -138,25 +138,8 @@ class TurtleSoupBoiler:
             new_sent = self.gpt_get_next(gpt_input)
             max_sim_scores, new_embedding = self.max_similarity(new_sent)
 
-            ## handle exceptions: if the generated sentence is too similar to some previous sentence
-            re_generation_counter = 0
-            while max_sim_scores > 0.9 and re_generation_counter < 10:
-                print('[new_sent]', new_sent)
-                print('[max_sim_scores]', max_sim_scores)
-                gpt_input = self.get_continuation_prompt(curr_story)
-                new_sent = self.gpt_get_next(gpt_input)
-                max_sim_scores, new_embedding = self.max_similarity(new_sent)
-                re_generation_counter += 1
-            if max_sim_scores > 0.9: # if 10 prompt still cannot bring the similarity down
-                print('>All the continuous prompt is not able to bring the sim score down!')
-                gpt_input_lst = [self.get_continuation_prompt(curr_story, cp) for cp in self.continuation_list]
-                new_sent_lst = [self.gpt_get_next(gpt_input) for gpt_input in gpt_input_lst]
-                sim_score_lst = [self.max_similarity(new_sent) for new_sent in new_sent_lst]
-                best_i = np.argmin([i[0] for i in sim_score_lst])
-                new_sent = new_sent_lst[best_i]
-                new_embedding = sim_score_lst[best_i][1]
-                max_sim_scores = sim_score_lst[best_i][0]
-                self.used_continuation = []
+            if max_sim_scores > 0.9:
+                new_sent, new_embedding, max_sim_scores = self.handle_regeneration(curr_story)
             
             # update current sentences
             if self.verbose:
@@ -171,6 +154,33 @@ class TurtleSoupBoiler:
             print()
         print('>Final story:', curr_story)
         return curr_story
+    def handle_regeneration(self, curr_story):
+        '''
+            Handle special situation where re-generation is needed
+        '''
+        if self.verbose:
+            print('>Need to re-generate to replace overly similar sentence!')
+        re_generation_counter = 0
+        max_sim_scores = 1
+        while max_sim_scores > 0.9 and re_generation_counter < 10:
+            gpt_input = self.get_continuation_prompt(curr_story)
+            new_sent = self.gpt_get_next(gpt_input)
+            max_sim_scores, new_embedding = self.max_similarity(new_sent)
+            re_generation_counter += 1
+            if self.verbose:
+                print('[new_sent]', new_sent)
+                print('[max_sim_scores]', max_sim_scores)
+        if max_sim_scores > 0.9: # if 10 prompt still cannot bring the similarity down
+            print('>All the continuous prompt is not able to bring the sim score down!')
+            gpt_input_lst = [self.get_continuation_prompt(curr_story, cp) for cp in self.continuation_list]
+            new_sent_lst = [self.gpt_get_next(gpt_input) for gpt_input in gpt_input_lst]
+            sim_score_lst = [self.max_similarity(new_sent) for new_sent in new_sent_lst]
+            best_i = np.argmin([i[0] for i in sim_score_lst])
+            new_sent = new_sent_lst[best_i]
+            new_embedding = sim_score_lst[best_i][1]
+            max_sim_scores = sim_score_lst[best_i][0]
+            self.used_continuation = []
+        return new_sent, new_embedding, max_sim_scores
 
     def gpt_get_next(self, gpt_input):
         '''
@@ -186,7 +196,7 @@ class TurtleSoupBoiler:
             top_p=0.7,
             frequency_penalty=0,
             presence_penalty=0,
-            stop = ['. ']
+            stop = ['. ', '? ', '! ']
         )
         new_sent = response["choices"][0]["text"].strip("\n")
         new_sent = self.clean_sent(new_sent)
@@ -204,10 +214,15 @@ class TurtleSoupBoiler:
         '''
             Clean a given sentence
         '''
+        # basic cleanup 
         sent = ''.join([c for c in sent if c in string.printable])
-        sent = sent.strip()
         sent = re.sub(' +', ' ', sent)
-        sent = re.sub('\n+', '\n', sent)
+        sent = re.sub('\n+', ' ', sent)
         sent = re.sub('\t+', ' ', sent)
+        sent = sent.strip()
+
+        # add period, if needed
+        if sent[-1] not in [".", ",", "?", "!", "'", '"']:
+            sent += '.'
         return sent.capitalize()
 
