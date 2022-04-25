@@ -120,10 +120,10 @@ class TurtleSoupBoiler:
 
         # TODO: generate the settings of the story
 
-        location, main_char, possible_chars = self.generate_settings(first_sent)
-        first_sent = f"Setting:\nLocation: {location}\nMain Character: {main_char}\nOther Characters: {possible_chars}\n{first_sent}"
+        location, main_char, possible_chars, genre = self.generate_settings(first_sent)
+        self.settings = f"Setting:\nLocation: {location}\nMain Character: {main_char}\nOther Characters: {possible_chars}\nGenre: {genre}\n"
         if self.verbose:
-            print(first_sent)
+            print(self.settings)
         first_sent = self.clean_sent(first_sent) #.rstrip()
         curr_story = first_sent
         prev_sent = first_sent
@@ -133,10 +133,11 @@ class TurtleSoupBoiler:
         for i in range(1, self.num_sent + 1):
             if self.verbose:
                 print('> Current step:', i + 1)
-
+            twisted = False
             # check if it is the sample step; if so, re-engineer the prompt
             # also, sample the reversal probability, if it is less than p_sample, then reverse the sentence
             if i % self.sample_step == 0 and random.random() < self.p_sample:
+                twisted = True
                 gpt_input = self.get_reversal_prompt(prev_sent, curr_story)
             else:
                 gpt_input = curr_story # self.get_continuation_prompt(curr_story)
@@ -152,7 +153,10 @@ class TurtleSoupBoiler:
             if self.verbose:
                 print('[Final new_sent]', new_sent)
                 print('[Final max_sim_scores]', max_sim_scores)
-            self.sent_lst.append(new_sent)
+            if twisted:
+                self.sent_lst.append(f"[{new_sent}]")
+            else:
+                self.sent_lst.append(new_sent)
             self.sent_emb.append(new_embedding)
             prev_sent = new_sent
             if self.verbose:
@@ -160,6 +164,7 @@ class TurtleSoupBoiler:
             curr_story += f" {new_sent}"
             print()
         print('>Final story:', curr_story)
+        print('>Final story with marked twists', " ".join(self.sent_lst))
         return curr_story
     def handle_regeneration(self, curr_story):
         '''
@@ -200,12 +205,12 @@ class TurtleSoupBoiler:
         # get the next sentence
         response = openai.Completion.create(
             model="text-davinci-002",
-            prompt=self.single_sent_prompt + gpt_input + '\n',
+            prompt=self.settings + self.single_sent_prompt + gpt_input + '\n',
             temperature=0.7,
             max_tokens=256,
             top_p=0.7,
-            frequency_penalty=0,
-            presence_penalty=0,
+            frequency_penalty=0.5,
+            presence_penalty=0.75,
             stop = ['. ', '? ', '! ']
         )
         new_sent = response["choices"][0]["text"].strip("\n")
@@ -232,7 +237,7 @@ class TurtleSoupBoiler:
         sent = sent.strip()
 
         # add period, if needed
-        if sent[-1] not in [".", ",", "?", "!", "'", '"']:
+        if len(sent) > 0 and sent[-1] not in [".", ",", "?", "!", "'", '"']:
             sent += '.'
         return sent.capitalize()
 
@@ -253,9 +258,9 @@ class TurtleSoupBoiler:
         '''
             Construct setting of the story, given the first sentence.
         '''
-        location = self.call_GPT(f"Where does the following story probably happen? {sent} The story probably happens at")
-        main_char = self.call_GPT(f"Who is the main character of the following story? {sent} The main character is")
-        possible_chars = self.call_GPT(f"What other characters might be present at the story? {sent} Some other characters might include")
-        # add period, if needed
-        return location, main_char, possible_chars
+        location = self.call_GPT(f"Where does the following story probably happen? {sent} The story probably happens at").strip(" ")
+        main_char = self.call_GPT(f"Who is the main character of the following story? {sent} The main character is").strip(" ")
+        possible_chars = self.call_GPT(f"What other characters might be present at the story? {sent} Some other characters might include").strip(" ")
+        genre = random.choice(["suspense", "detective", "comedy", "supernatural", "fantasy", "adventure", "city legend", "puzzle"])
+        return location, main_char, possible_chars, genre
 
