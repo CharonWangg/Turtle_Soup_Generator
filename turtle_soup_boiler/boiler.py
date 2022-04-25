@@ -1,10 +1,11 @@
 # from .utils import *
 # from .quantifier import Quantifier
-from utils import *
-from quantifier import Quantifier
+from .utils import *
+from .quantifier import Quantifier
 import pickle
 import string
 import re
+from nltk import sent_tokenize
 from sentence_transformers import SentenceTransformer, util
 import numpy as np
 
@@ -16,7 +17,7 @@ sentiment_list = ["happy", "angry", "relieving", "worrying",
 class TurtleSoupBoiler:
     # class variables
     # single_sent_prompt = 'Generate one sentence completion after given story:   '
-    single_sent_prompt = ""
+    single_sent_prompt = ""  # "Generate a suspense story: "
     sentiment_list = ["happy", "angry", "relieving", "worrying",
                       "surprising", "anticipated", "reassuring",
                       "stressing", "calm", "sad"]
@@ -96,7 +97,7 @@ class TurtleSoupBoiler:
 
         return input_seq
 
-    def get_continuation_prompt(self, curr_seq, continuation_prompt = None):
+    def get_continuation_prompt(self, curr_seq, continuation_prompt=None):
 
         if continuation_prompt is None:
             # if all the continuations have been used, reset
@@ -117,14 +118,13 @@ class TurtleSoupBoiler:
             print('>[ERROR] Empty input sequence! Stop!')
             return ''
 
-
         # TODO: generate the settings of the story
 
         location, main_char, possible_chars, genre = self.generate_settings(first_sent)
         self.settings = f"Setting:\nLocation: {location}\nMain Character: {main_char}\nOther Characters: {possible_chars}\nGenre: {genre}\n"
         if self.verbose:
             print(self.settings)
-        first_sent = self.clean_sent(first_sent) #.rstrip()
+        first_sent = self.clean_sent(first_sent)  # .rstrip()
         curr_story = first_sent
         prev_sent = first_sent
         self.sent_lst = [first_sent]
@@ -140,25 +140,30 @@ class TurtleSoupBoiler:
                 twisted = True
                 gpt_input = self.get_reversal_prompt(prev_sent, curr_story)
             else:
-                gpt_input = curr_story # self.get_continuation_prompt(curr_story)
+                gpt_input = curr_story  # self.get_continuation_prompt(curr_story)
             if self.verbose:
                 print(f">Input to GPT: {gpt_input}")
-            new_sent = self.gpt_get_next(gpt_input)
-            max_sim_scores, new_embedding = self.max_similarity(new_sent)
-
-            if max_sim_scores > 0.9:
-                new_sent, new_embedding, max_sim_scores = self.handle_regeneration(curr_story)
-            
-            # update current sentences
-            if self.verbose:
-                print('[Final new_sent]', new_sent)
-                print('[Final max_sim_scores]', max_sim_scores)
-            if twisted:
-                self.sent_lst.append(f"[{new_sent}]")
-            else:
+            # TODO: add support for multiple sub-sentences similarity check
+            new_sent = self.sample_3_sent(self.gpt_get_next(gpt_input))
+            # check if the new_sent is more than 3 sentences
+            if not isinstance(new_sent, list):
+                max_sim_scores, new_embedding = self.max_similarity(new_sent)
+                if max_sim_scores > 0.9:
+                    new_sent, new_embedding, max_sim_scores = self.handle_regeneration(curr_story)
+                # update current sentences
+                if self.verbose:
+                    print('[Final new_sent]', new_sent)
+                    print('[Final max_sim_scores]', max_sim_scores)
                 self.sent_lst.append(new_sent)
-            self.sent_emb.append(new_embedding)
-            prev_sent = new_sent
+                self.sent_emb.append(new_embedding)
+                prev_sent = new_sent
+            else:
+                new_sent = " ".join(new_sent)
+                # update current sentences
+                if self.verbose:
+                    print('[Final new_sent]', new_sent)
+                self.sent_lst.append(new_sent)
+                prev_sent = new_sent
             if self.verbose:
                 print(f">Current Last Sentence: {prev_sent}")
             curr_story += f" {new_sent}"
@@ -166,6 +171,7 @@ class TurtleSoupBoiler:
         print('>Final story:', curr_story)
         print('>Final story with marked twists', " ".join(self.sent_lst))
         return curr_story
+
     def handle_regeneration(self, curr_story):
         '''
             Handle special situation where re-generation is needed
@@ -175,7 +181,7 @@ class TurtleSoupBoiler:
         re_generation_counter = 0
         max_sim_scores = 1
         while max_sim_scores > 0.9 and re_generation_counter < 5:
-            # TODO: Regenerate with the new prompt "because" / 
+            # TODO: Regenerate with the new prompt "because" /
             # "then, an unexpected character shows up in the current location" / "Then, they moved to [new location], which is"
             # "then, an unknown piece of memory emerged. Three years ago," / "but it is too late,"
             gpt_input = self.get_continuation_prompt(curr_story)
@@ -185,7 +191,7 @@ class TurtleSoupBoiler:
             if self.verbose:
                 print('[new_sent]', new_sent)
                 print('[max_sim_scores]', max_sim_scores)
-        if max_sim_scores > 0.9: # if 10 prompt still cannot bring the similarity down
+        if max_sim_scores > 0.9:  # if 10 prompt still cannot bring the similarity down
             print('>All the continuous prompt is not able to bring the sim score down!')
             gpt_input_lst = [self.get_continuation_prompt(curr_story, cp) for cp in self.continuation_list]
             new_sent_lst = [self.gpt_get_next(gpt_input) for gpt_input in gpt_input_lst]
@@ -211,7 +217,7 @@ class TurtleSoupBoiler:
             top_p=0.7,
             frequency_penalty=0.5,
             presence_penalty=0.75,
-            stop = ['. ', '? ', '! ']
+            # stop=['. ', '? ', '! ']
         )
         new_sent = response["choices"][0]["text"].strip("\n")
         new_sent = self.clean_sent(new_sent)
@@ -224,12 +230,23 @@ class TurtleSoupBoiler:
         new_embedding = self.sent_similarity_model.encode(new_sent, convert_to_tensor=True)
         sim_scores = [float(util.pytorch_cos_sim(new_embedding, sent_emb)) for sent_emb in self.sent_emb]
         return max(sim_scores), new_embedding
-        
+
+    def sample_3_sent(self, sents):
+        '''
+            Sample 3 sentences from the story
+        '''
+        # sample 3 sentences
+        sent_list = sent_tokenize(sents)
+        if len(sent_list) == 1:
+            return sent_list[0]
+        else:
+            return sent_list
+
     def clean_sent(self, sent):
         '''
             Clean a given sentence
         '''
-        # basic cleanup 
+        # basic cleanup
         sent = ''.join([c for c in sent if c in string.printable])
         sent = re.sub(' +', ' ', sent)
         sent = re.sub('\n+', ' ', sent)
@@ -250,17 +267,21 @@ class TurtleSoupBoiler:
             top_p=0.7,
             frequency_penalty=0,
             presence_penalty=0,
-            stop = ['. ', '? ', '! ']
+            # stop=['. ', '? ', '! ']
         )
         return response["choices"][0]["text"].strip("\n")
-    
+
     def generate_settings(self, sent):
         '''
             Construct setting of the story, given the first sentence.
         '''
-        location = self.call_GPT(f"Where does the following story probably happen? {sent} The story probably happens at").strip(" ")
-        main_char = self.call_GPT(f"Who is the main character of the following story? {sent} The main character is").strip(" ")
-        possible_chars = self.call_GPT(f"What other characters might be present at the story? {sent} Some other characters might include").strip(" ")
-        genre = random.choice(["suspense", "detective", "comedy", "supernatural", "fantasy", "adventure", "city legend", "puzzle"])
+        location = self.call_GPT(
+            f"Where does the following story probably happen? {sent} The story probably happens at").strip(" ")
+        main_char = self.call_GPT(
+            f"Who is the main character of the following story? {sent} The main character is").strip(" ")
+        possible_chars = self.call_GPT(
+            f"What other characters might be present at the story? {sent} Some other characters might include").strip(
+            " ")
+        genre = random.choice(
+            ["suspense", "detective", "comedy", "supernatural", "fantasy", "adventure", "city legend", "puzzle"])
         return location, main_char, possible_chars, genre
-
