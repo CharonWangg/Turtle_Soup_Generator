@@ -5,6 +5,7 @@ from .quantifier import Quantifier
 import pickle
 import string
 import re
+from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer, util
 import numpy as np
 
@@ -16,7 +17,7 @@ sentiment_list = ["happy", "angry", "relieving", "worrying",
 class TurtleSoupBoiler:
     # class variables
     # single_sent_prompt = 'Generate one sentence completion after given story:   '
-    single_sent_prompt = ""
+    single_sent_prompt = "Generate a suspense story: "
     sentiment_list = ["happy", "angry", "relieving", "worrying",
                       "surprising", "anticipated", "reassuring",
                       "stressing", "calm", "sad"]
@@ -87,7 +88,7 @@ class TurtleSoupBoiler:
         sentiment = get_sentiment(curr_last_sent)
         if self.verbose:
             print(f">Sentiment: {sentiment}")
-        next_sentiment = self.get_aug_reversal(curr_last_sent, sentiment)
+        next_sentiment = self.get_reversal(sentiment)
         if self.verbose:
             print(f">Next Sentiment: {next_sentiment}")
         input_seq = f"{curr_seq} Then, something {next_sentiment} happened."
@@ -96,7 +97,7 @@ class TurtleSoupBoiler:
 
         return input_seq
 
-    def get_continuation_prompt(self, curr_seq, continuation_prompt = None):
+    def get_continuation_prompt(self, curr_seq, continuation_prompt=None):
 
         if continuation_prompt is None:
             # if all the continuations have been used, reset
@@ -107,7 +108,7 @@ class TurtleSoupBoiler:
                 continuation_prompt = np.random.choice(self.continuation_list)
 
         continuation_prompt = continuation_prompt + " something happened. "
-        return f"{curr_seq} {continuation_prompt}"
+        return f"{curr_seq} Then,"  # {continuation_prompt}"
 
     def generate_story(self, first_sent):
         '''
@@ -117,7 +118,7 @@ class TurtleSoupBoiler:
             print('>[ERROR] Empty input sequence! Stop!')
             return ''
 
-        first_sent = self.clean_sent(first_sent) #.rstrip()
+        first_sent = self.clean_sent(first_sent)  # .rstrip()
         curr_story = first_sent
         prev_sent = first_sent
         self.sent_lst = [first_sent]
@@ -132,28 +133,39 @@ class TurtleSoupBoiler:
             if i % self.sample_step == 0 and random.random() < self.p_sample:
                 gpt_input = self.get_reversal_prompt(prev_sent, curr_story)
             else:
-                gpt_input = curr_story # self.get_continuation_prompt(curr_story)
+                gpt_input = curr_story  # self.get_continuation_prompt(curr_story)
             if self.verbose:
                 print(f">Input to GPT: {gpt_input}")
-            new_sent = self.gpt_get_next(gpt_input)
-            max_sim_scores, new_embedding = self.max_similarity(new_sent)
+            # TODO: add support for multiple sub-sentences similarity check
+            new_sent = self.sample_3_sent(self.gpt_get_next(gpt_input))
+            # check if the new_sent is more than 3 sentences
+            if not isinstance(new_sent, list):
+                max_sim_scores, new_embedding = self.max_similarity(new_sent)
+                if max_sim_scores > 0.9:
+                    new_sent, new_embedding, max_sim_scores = self.handle_regeneration(curr_story)
+                # update current sentences
+                if self.verbose:
+                    print('[Final new_sent]', new_sent)
+                    print('[Final max_sim_scores]', max_sim_scores)
+                self.sent_lst.append(new_sent)
+                self.sent_emb.append(new_embedding)
+                prev_sent = new_sent
+            else:
+                new_sent = " ".join(new_sent)
+                # update current sentences
+                if self.verbose:
+                    print('[Final new_sent]', new_sent)
+                self.sent_lst.append(new_sent)
+                prev_sent = new_sent
 
-            if max_sim_scores > 0.9:
-                new_sent, new_embedding, max_sim_scores = self.handle_regeneration(curr_story)
-            
-            # update current sentences
-            if self.verbose:
-                print('[Final new_sent]', new_sent)
-                print('[Final max_sim_scores]', max_sim_scores)
-            self.sent_lst.append(new_sent)
-            self.sent_emb.append(new_embedding)
-            prev_sent = new_sent
+
             if self.verbose:
                 print(f">Current Last Sentence: {prev_sent}")
             curr_story += f" {new_sent}"
             print()
         print('>Final story:', curr_story)
         return curr_story
+
     def handle_regeneration(self, curr_story):
         '''
             Handle special situation where re-generation is needed
@@ -170,7 +182,7 @@ class TurtleSoupBoiler:
             if self.verbose:
                 print('[new_sent]', new_sent)
                 print('[max_sim_scores]', max_sim_scores)
-        if max_sim_scores > 0.9: # if 10 prompt still cannot bring the similarity down
+        if max_sim_scores > 0.9:  # if 10 prompt still cannot bring the similarity down
             print('>All the continuous prompt is not able to bring the sim score down!')
             gpt_input_lst = [self.get_continuation_prompt(curr_story, cp) for cp in self.continuation_list]
             new_sent_lst = [self.gpt_get_next(gpt_input) for gpt_input in gpt_input_lst]
@@ -196,7 +208,7 @@ class TurtleSoupBoiler:
             top_p=0.7,
             frequency_penalty=0,
             presence_penalty=0,
-            stop = ['. ', '? ', '! ']
+            # stop = ['. ', '? ', '! ']
         )
         new_sent = response["choices"][0]["text"].strip("\n")
         new_sent = self.clean_sent(new_sent)
@@ -209,7 +221,18 @@ class TurtleSoupBoiler:
         new_embedding = self.sent_similarity_model.encode(new_sent, convert_to_tensor=True)
         sim_scores = [float(util.pytorch_cos_sim(new_embedding, sent_emb)) for sent_emb in self.sent_emb]
         return max(sim_scores), new_embedding
-        
+
+    def sample_3_sent(self, sents):
+        '''
+            Sample 3 sentences from the story
+        '''
+        # sample 3 sentences
+        sent_list = sent_tokenize(sents)
+        if len(sent_list) == 1:
+            return sent_list[0]
+        else:
+            return sent_list[:3]
+
     def clean_sent(self, sent):
         '''
             Clean a given sentence
@@ -225,4 +248,3 @@ class TurtleSoupBoiler:
         if sent[-1] not in [".", ",", "?", "!", "'", '"']:
             sent += '.'
         return sent.capitalize()
-
